@@ -6,21 +6,22 @@ import { ImageGallery } from './components/ImageGallery';
 import { generatePlan, extractPrompts, generateImage } from './services/geminiService';
 import { EduState, AppStep, GeneratedImage } from './types';
 
-// Add definition for html2pdf
 declare global {
   interface Window {
     html2pdf: () => any;
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
   }
 }
 
 const INITIAL_STATE: EduState = {
-  step: AppStep.MODE_SELECTION,
-  mode: null,
-  basicInfo: { age: '', subject: '', topic: '' },
-  goals: { learningGoal: '', timing: '' },
+  step: AppStep.BASIC_INFO,
+  basicInfo: { age: '', subject: '', topic: '', density: 'Standard' },
   selectedModules: [],
   studentTraits: { interests: '', differentiation: false },
-  visualLanguage: 'Chinese', // Default
+  visualLanguage: 'Chinese',
   aiSuggestion: null,
   finalResult: null,
   isGenerating: false,
@@ -38,16 +39,6 @@ const App: React.FC = () => {
     checkApiKey();
   }, []);
 
-  // Auto-detect language preference based on subject input
-  useEffect(() => {
-    if (state.step === AppStep.BASIC_INFO) {
-      const subject = state.basicInfo.subject.toLowerCase();
-      if (subject.includes('english') || subject.includes('英文') || subject.includes('英語')) {
-        setState(s => ({ ...s, visualLanguage: 'English' }));
-      }
-    }
-  }, [state.basicInfo.subject, state.step]);
-
   const checkApiKey = async () => {
     try {
       if (window.aistudio && window.aistudio.hasSelectedApiKey) {
@@ -61,120 +52,61 @@ const App: React.FC = () => {
     }
   };
 
-  const handleKeySelected = () => {
-    setHasApiKey(true);
+  const handleKeySelected = () => setHasApiKey(true);
+
+  const cleanMarkdownHtml = (raw: string) => {
+    if (!raw) return '';
+    return raw
+      .replace(/^```html\s*/i, '')
+      .replace(/^```\s*/, '')
+      .replace(/```\s*$/, '')
+      .trim();
   };
 
   const handleGenerate = async () => {
     setState(s => ({ ...s, isGenerating: true, finalResult: null, generatedImages: [] }));
-    const result = await generatePlan(state);
-    setState(s => ({ 
-      ...s, 
-      finalResult: result, 
-      isGenerating: false, 
-      step: AppStep.RESULT 
-    }));
-  };
-
-  const handleReset = () => {
-    setState(INITIAL_STATE);
-  };
-
-  const handlePdfDownload = async () => {
-    if (!state.finalResult) return;
-    
-    setIsPdfGenerating(true);
     
     try {
-      // Create a temporary element to render the HTML for PDF generation
-      // We wrap it to ensure styles are captured correctly
-      const element = document.createElement('div');
-      element.className = 'plan-content p-8 bg-white';
-      element.innerHTML = state.finalResult;
+      const rawResult = await generatePlan(state);
+      const cleanedResult = cleanMarkdownHtml(rawResult);
       
-      // Remove the script tag containing prompts from the PDF visual
-      const scriptTag = element.querySelector('#prompts');
-      if (scriptTag) scriptTag.remove();
+      const extractedData = extractPrompts(cleanedResult);
+      const initialImages: GeneratedImage[] = extractedData.map((item, index) => ({
+        id: Date.now().toString() + index,
+        prompt: item.prompt,
+        aspectRatio: item.aspectRatio,
+        url: null,
+        status: 'pending'
+      }));
 
-      const opt = {
-        margin: [10, 10, 10, 10], // top, left, bottom, right in mm
-        filename: `eduvision-plan-${new Date().toISOString().slice(0, 10)}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-      };
-
-      if (window.html2pdf) {
-        await window.html2pdf().set(opt).from(element).save();
-      } else {
-        alert("PDF 生成庫尚未加載完成，請重整頁面後再試。");
-      }
-
+      setState(s => ({ 
+        ...s, 
+        finalResult: cleanedResult, 
+        generatedImages: initialImages,
+        isGenerating: false, 
+        step: AppStep.RESULT 
+      }));
     } catch (error) {
-      console.error("PDF Generation failed:", error);
-      alert("PDF 生成失敗，請稍後再試。");
-    } finally {
-      setIsPdfGenerating(false);
+      console.error("Generation failed:", error);
+      setState(s => ({ ...s, isGenerating: false }));
+      alert("設計方案生成失敗，請檢查 API 金鑰。");
     }
   };
 
-  const handleGenerateImages = async () => {
-    if (!state.finalResult) return;
-    
-    // Extract prompts from HTML
-    const extractedData = extractPrompts(state.finalResult);
-    
-    if (extractedData.length === 0) {
-      alert("未偵測到可用的生圖提示詞 (JSON)。請嘗試「重新生成教學計劃」。");
-      return;
-    }
+  const handleReset = () => setState(INITIAL_STATE);
 
-    // Initialize image placeholders
-    const newImages: GeneratedImage[] = extractedData.map((item, index) => ({
-      id: Date.now().toString() + index,
-      prompt: item.prompt,
-      aspectRatio: item.aspectRatio,
-      url: null,
-      status: 'pending'
+  const handleUpdatePrompt = (id: string, newPrompt: string) => {
+    setState(s => ({
+      ...s,
+      generatedImages: s.generatedImages.map(img => 
+        img.id === id ? { ...img, editedPrompt: newPrompt } : img
+      )
     }));
-
-    setState(s => ({ ...s, generatedImages: newImages }));
-
-    // Process images sequentially
-    for (let i = 0; i < newImages.length; i++) {
-       const imgId = newImages[i].id;
-       const currentItem = newImages[i];
-       
-       setState(s => ({
-         ...s,
-         generatedImages: s.generatedImages.map(img => 
-           img.id === imgId ? { ...img, status: 'generating' } : img
-         )
-       }));
-
-       try {
-         const base64Url = await generateImage(currentItem.prompt, currentItem.aspectRatio);
-         
-         setState(s => ({
-           ...s,
-           generatedImages: s.generatedImages.map(img => 
-             img.id === imgId ? { ...img, status: 'completed', url: base64Url } : img
-           )
-         }));
-       } catch (error) {
-         setState(s => ({
-           ...s,
-           generatedImages: s.generatedImages.map(img => 
-             img.id === imgId ? { ...img, status: 'error', error: 'Generation failed' } : img
-           )
-         }));
-       }
-    }
   };
 
-  const handleRedoImage = async (id: string) => {
-    const targetImage = state.generatedImages.find(img => img.id === id);
-    if (!targetImage) return;
+  const handleGenerateSingleImage = async (id: string) => {
+    const target = state.generatedImages.find(img => img.id === id);
+    if (!target) return;
 
     setState(s => ({
       ...s,
@@ -184,7 +116,8 @@ const App: React.FC = () => {
     }));
 
     try {
-      const base64Url = await generateImage(targetImage.prompt, targetImage.aspectRatio);
+      const finalPrompt = target.editedPrompt || target.prompt;
+      const base64Url = await generateImage(finalPrompt, target.aspectRatio);
       setState(s => ({
         ...s,
         generatedImages: s.generatedImages.map(img => 
@@ -195,112 +128,132 @@ const App: React.FC = () => {
       setState(s => ({
         ...s,
         generatedImages: s.generatedImages.map(img => 
-          img.id === id ? { ...img, status: 'error', error: 'Redo failed' } : img
+          img.id === id ? { ...img, status: 'error', error: (error as Error).message } : img
         )
       }));
     }
   };
 
-  if (isLoadingKey) {
-    return (
-      <Layout>
-        <div className="flex justify-center items-center h-full">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-        </div>
-      </Layout>
-    );
-  }
+  const handleGenerateAllImages = async () => {
+    const pendingImages = state.generatedImages; // Generate all, including those already done if needed
+    for (const img of pendingImages) {
+      await handleGenerateSingleImage(img.id);
+    }
+  };
 
-  if (!hasApiKey) {
-    return (
-      <Layout>
-        <ApiKeyPage onKeySelected={handleKeySelected} />
-      </Layout>
-    );
-  }
+  const handlePdfDownload = async () => {
+    if (!state.finalResult) return;
+    setIsPdfGenerating(true);
+    try {
+      const element = document.createElement('div');
+      element.className = 'plan-content p-12 bg-white';
+      
+      // Part 1: Main Plan
+      let html = state.finalResult;
+      // Part 2: Generated Images & Prompts
+      if (state.generatedImages.length > 0) {
+        html += '<div style="page-break-before: always; border-top: 2px solid #e2e8f0; padding-top: 2rem; margin-top: 3rem;">';
+        html += '<h1 style="text-align: left; margin-bottom: 2rem;">視覺教材資源庫</h1>';
+        state.generatedImages.forEach((img, idx) => {
+          html += `<div style="margin-bottom: 3rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 2rem;">`;
+          html += `<h3>教材資源 #${idx + 1}</h3>`;
+          if (img.url) {
+            html += `<div style="text-align: center; margin: 1rem 0;"><img src="${img.url}" style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);" /></div>`;
+          } else {
+            html += `<p style="color: #94a3b8; font-style: italic;">(此圖像未生成或生成失敗)</p>`;
+          }
+          html += `<div style="background: #f8fafc; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.85rem; color: #475569;">`;
+          html += `<strong>生成提示詞：</strong><br/>${img.editedPrompt || img.prompt}`;
+          html += `</div></div>`;
+        });
+        html += '</div>';
+      }
+
+      element.innerHTML = html;
+      
+      const scriptTag = element.querySelector('#prompts');
+      if (scriptTag) scriptTag.remove();
+      
+      const opt = {
+        margin: [15, 15, 15, 15],
+        filename: `eduvision-plan-${new Date().toISOString().slice(0, 10)}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      
+      if (window.html2pdf) {
+        await window.html2pdf().set(opt).from(element).save();
+      }
+    } catch (error) {
+      console.error("PDF Generation failed:", error);
+      alert("PDF 下載失敗，請重試。");
+    } finally {
+      setIsPdfGenerating(false);
+    }
+  };
+
+  if (isLoadingKey) return <Layout><div className="flex justify-center items-center h-full"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div></Layout>;
+  if (!hasApiKey) return <Layout><ApiKeyPage onKeySelected={handleKeySelected} /></Layout>;
 
   return (
-    <Layout title={state.step === AppStep.MODE_SELECTION ? '' : (state.mode === 'TEACHER' ? '教師模式' : '學生模式')}>
+    <Layout title={state.step === AppStep.RESULT ? '視覺化設計工作室' : '新專案設定'}>
       {state.step !== AppStep.RESULT ? (
-        <StepWizard 
-          state={state} 
-          setState={setState} 
-          onGenerate={handleGenerate}
-          onReset={handleReset}
-        />
+        <StepWizard state={state} setState={setState} onGenerate={handleGenerate} onReset={handleReset} />
       ) : (
-        <div className="space-y-6 animate-fade-in">
-          {/* Result Header */}
-          <div className="flex items-center justify-between border-b pb-4 mb-4 no-print">
-             <h2 className="text-2xl font-bold text-slate-800">您的 EduVision 教學計畫</h2>
-             <div className="flex gap-2">
-                <button 
-                  onClick={handlePdfDownload}
-                  disabled={isPdfGenerating}
-                  className="px-4 py-2 text-sm bg-indigo-50 text-indigo-700 font-medium rounded-lg hover:bg-indigo-100 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                  title="下載 PDF 教學計畫"
-                >
-                  {isPdfGenerating ? (
-                    <span className="animate-spin h-4 w-4 border-2 border-indigo-600 border-t-transparent rounded-full"></span>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  )}
-                  {isPdfGenerating ? '製作中...' : '下載教學計畫 (PDF)'}
+        <div className="space-y-8 animate-fade-in -mt-4 pb-20">
+          {/* Result Toolbar */}
+          <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-slate-200 py-4 px-2 -mx-2 flex items-center justify-between no-print">
+             <div className="pl-4">
+                <h2 className="text-xl font-bold text-slate-800">教學設計方案</h2>
+                <p className="text-xs text-slate-500">資訊密度：{state.basicInfo.density}</p>
+             </div>
+             <div className="flex gap-2 pr-4">
+                <button onClick={handlePdfDownload} disabled={isPdfGenerating} className="px-4 py-2 text-sm bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50">
+                  {isPdfGenerating ? <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
+                  匯出計畫 (PDF)
                 </button>
-                <button 
-                  onClick={handleReset}
-                  className="px-4 py-2 text-sm border border-slate-300 text-slate-500 rounded-lg hover:bg-slate-50 transition"
-                >
-                  重新開始
-                </button>
+                <button onClick={handleReset} className="px-4 py-2 text-sm bg-slate-100 text-slate-600 font-medium rounded-lg hover:bg-slate-200 transition">重新開始</button>
              </div>
           </div>
           
-          {/* Plan Content (Rendered HTML) */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 min-h-[500px]">
-            {/* The generated HTML from Gemini is rendered here */}
-            {/* We apply the plan-content class to style the raw HTML */}
-            <div 
-              className="plan-content prose prose-indigo max-w-none"
-              dangerouslySetInnerHTML={{ __html: state.finalResult || '' }} 
-            />
+          {/* Paper Canvas */}
+          <div className="flex justify-center bg-slate-100/30 -mx-8 p-12 border-y border-slate-100">
+            <div className="bg-white w-full max-w-[850px] min-h-[600px] shadow-[0_5px_30px_rgba(0,0,0,0.05)] rounded-sm p-16 relative">
+              <div className="absolute top-8 right-8 text-slate-100 pointer-events-none select-none text-6xl opacity-10 font-black italic">EduVision</div>
+              <div className="plan-content" dangerouslySetInnerHTML={{ __html: state.finalResult || '' }} />
+            </div>
           </div>
           
-          {/* Image Gallery */}
-          <ImageGallery images={state.generatedImages} onRedo={handleRedoImage} />
-
-          {/* Result Footer Actions */}
-          <div className="mt-8 pt-6 border-t flex flex-col md:flex-row justify-center gap-4 no-print">
-             <button 
-                  onClick={handleGenerate}
-                  disabled={state.isGenerating}
-                  className="px-6 py-3 rounded-xl border-2 border-slate-200 text-slate-600 font-bold hover:border-slate-300 hover:bg-slate-50 transition flex items-center justify-center gap-2"
-                >
-                  {state.isGenerating ? (
-                    <span className="animate-spin h-5 w-5 border-2 border-slate-400 border-t-transparent rounded-full"></span>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                  )}
-                  重新生成教學計劃
-            </button>
+          {/* Image Workspace - Redesigned to support Left/Right layout in Children */}
+          <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm p-10 no-print">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-10 pb-6 border-b border-slate-100">
+              <div className="text-center md:text-left">
+                <h3 className="text-2xl font-bold text-slate-800 mb-1">視覺圖像資產區</h3>
+                <p className="text-slate-500">左側為預覽，右側可編輯提示詞。按下「全部圖像生成」開始忙碌繪製。</p>
+              </div>
+              <button 
+                onClick={handleGenerateAllImages}
+                disabled={state.generatedImages.some(img => img.status === 'generating') || state.generatedImages.length === 0}
+                className="inline-flex items-center gap-3 px-8 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 hover:-translate-y-1 transition-all disabled:opacity-50"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                全部圖像生成
+              </button>
+            </div>
             
-            <button 
-                  onClick={handleGenerateImages}
-                  disabled={state.generatedImages.some(img => img.status === 'generating' || img.status === 'pending') && state.generatedImages.length > 0}
-                  className="px-8 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {state.generatedImages.some(img => img.status === 'generating') ? (
-                    <>
-                      <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
-                      正在繪製中...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                      進行圖像生成
-                    </>
-                  )}
-            </button>
+            <ImageGallery 
+              images={state.generatedImages} 
+              onUpdatePrompt={handleUpdatePrompt} 
+              onGenerateSingle={handleGenerateSingleImage} 
+            />
+          </div>
+
+          <div className="flex justify-center pt-8 no-print pb-20">
+             <button onClick={handleGenerate} disabled={state.isGenerating} className="text-slate-400 hover:text-indigo-600 text-sm font-medium flex items-center gap-2 transition group">
+                <svg className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                對計畫內容不滿意？重新設計計畫內容
+              </button>
           </div>
         </div>
       )}

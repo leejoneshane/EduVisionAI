@@ -12,7 +12,7 @@
       body {
         font-family: 'Inter', 'Noto Sans TC', sans-serif;
       }
-      /* Custom scrollbar for better aesthetics */
+      /* Custom scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
@@ -28,11 +28,10 @@
         background: #94a3b8;
       }
       
-      /* Print styles */
       @media print {
         @page {
           margin: 1cm;
-          size: landscape;
+          size: portrait;
         }
         body {
           background-color: white !important;
@@ -42,22 +41,95 @@
         }
       }
 
-      /* Styles for the generated HTML plan */
-      .plan-content h1 { font-size: 1.8rem; font-weight: 700; color: #1e293b; margin-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }
-      .plan-content h2 { font-size: 1.4rem; font-weight: 600; color: #334155; margin-top: 2rem; margin-bottom: 1rem; background-color: #f1f5f9; padding: 0.5rem; border-left: 4px solid #6366f1; border-radius: 0 4px 4px 0; }
-      .plan-content h3 { font-size: 1.2rem; font-weight: 600; color: #475569; margin-top: 1.5rem; margin-bottom: 0.5rem; }
-      .plan-content p { margin-bottom: 1rem; line-height: 1.7; color: #334155; }
-      .plan-content ul, .plan-content ol { margin-bottom: 1rem; padding-left: 1.5rem; }
-      .plan-content ul { list-style-type: disc; }
-      .plan-content ol { list-style-type: decimal; }
-      .plan-content li { margin-bottom: 0.5rem; color: #334155; }
-      .plan-content .highlight-box { background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
-      .plan-content .tag { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.85rem; font-weight: 500; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+      /* Enhanced Styles for the generated HTML plan */
+      .plan-content {
+        color: #334155;
+        font-size: 1.05rem;
+        line-height: 1.8;
+      }
+      .plan-content h1 { 
+        font-size: 2rem; 
+        font-weight: 800; 
+        color: #0f172a; 
+        margin-bottom: 2rem; 
+        text-align: center;
+        letter-spacing: -0.025em;
+      }
+      .plan-content h2 { 
+        font-size: 1.5rem; 
+        font-weight: 700; 
+        color: #1e293b; 
+        margin-top: 2.5rem; 
+        margin-bottom: 1.25rem; 
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .plan-content h2::before {
+        content: '';
+        display: inline-block;
+        width: 4px;
+        height: 1.5rem;
+        background: #6366f1;
+        border-radius: 2px;
+      }
+      .plan-content h3 { 
+        font-size: 1.25rem; 
+        font-weight: 600; 
+        color: #475569; 
+        margin-top: 1.5rem; 
+        margin-bottom: 0.75rem; 
+      }
+      .plan-content p { margin-bottom: 1.25rem; }
+      .plan-content ul, .plan-content ol { 
+        margin-bottom: 1.5rem; 
+        padding-left: 1.5rem; 
+        background: #f8fafc;
+        padding: 1.25rem 1.5rem;
+        border-radius: 0.75rem;
+        border: 1px solid #f1f5f9;
+      }
+      .plan-content li { margin-bottom: 0.75rem; }
+      .plan-content .highlight-box { 
+        background: linear-gradient(to right, #eff6ff, #f0f9ff);
+        border: 1px solid #bfdbfe; 
+        border-left: 4px solid #3b82f6;
+        border-radius: 8px; 
+        padding: 1.5rem; 
+        margin: 1.5rem 0; 
+      }
+      .plan-content .tag { 
+        display: inline-block; 
+        padding: 0.25rem 0.75rem; 
+        border-radius: 9999px; 
+        font-size: 0.8rem; 
+        font-weight: 600; 
+        margin-right: 0.5rem; 
+        text-transform: uppercase;
+      }
       .plan-content .tag-indigo { background-color: #e0e7ff; color: #4338ca; }
       .plan-content .tag-emerald { background-color: #d1fae5; color: #065f46; }
-      .plan-content table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
-      .plan-content th, .plan-content td { border: 1px solid #cbd5e1; padding: 0.75rem; text-align: left; }
-      .plan-content th { background-color: #f8fafc; font-weight: 600; }
+      
+      .plan-content table { 
+        width: 100%; 
+        border-collapse: separate; 
+        border-spacing: 0;
+        margin-bottom: 2rem; 
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+      }
+      .plan-content th, .plan-content td { 
+        border-bottom: 1px solid #e2e8f0;
+        padding: 1rem; 
+        text-align: left; 
+      }
+      .plan-content th { 
+        background-color: #f1f5f9; 
+        font-weight: 700; 
+        color: #475569;
+      }
+      .plan-content tr:last-child td { border-bottom: none; }
     </style>
   <script type="importmap">
 {
@@ -65,11 +137,11 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
-    "@react-pdf/renderer": "https://esm.sh/@react-pdf/renderer@^4.3.1"
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0"
   }
 }
 </script>
+<link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-slate-50 text-slate-900 antialiased">
     <div id="root"></div>

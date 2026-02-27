@@ -1,24 +1,18 @@
-export type UserMode = 'TEACHER' | 'STUDENT';
 export type VisualLanguage = 'Chinese' | 'English';
+export type InformationDensity = 'Standard' | 'Detailed' | 'Professional';
 
 export enum AppStep {
-  MODE_SELECTION = 0,
-  BASIC_INFO = 1,
-  GOALS = 2,
-  MODULE_SELECTION = 3,
-  STUDENT_TRAITS = 4,
-  RESULT = 5
+  BASIC_INFO = 0,
+  MODULE_SELECTION = 1,
+  STUDENT_TRAITS = 2,
+  RESULT = 3
 }
 
 export interface BasicInfo {
   age: string;
   subject: string;
   topic: string;
-}
-
-export interface Goals {
-  learningGoal: string; // understanding, memory, application, creation, etc.
-  timing: string; // intro, review, assessment, etc.
+  density: InformationDensity;
 }
 
 export interface StudentTraits {
@@ -36,6 +30,7 @@ export interface ModuleOption {
 export interface GeneratedImage {
   id: string;
   prompt: string;
+  editedPrompt?: string;
   url: string | null;
   status: 'pending' | 'generating' | 'completed' | 'error';
   error?: string;
@@ -44,9 +39,7 @@ export interface GeneratedImage {
 
 export interface EduState {
   step: AppStep;
-  mode: UserMode | null;
   basicInfo: BasicInfo;
-  goals: Goals;
   selectedModules: string[];
   studentTraits: StudentTraits;
   visualLanguage: VisualLanguage;
